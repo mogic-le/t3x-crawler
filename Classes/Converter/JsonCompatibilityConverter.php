@@ -5,7 +5,8 @@ declare(strict_types=1);
 namespace AOE\Crawler\Converter;
 
 /*
- * (c) 2020 AOE GmbH <dev@aoe.com>
+ * (c) 2020     AOE GmbH <dev@aoe.com>
+ * (c) 2023-    Tomas Norre Mikkelsen <tomasnorre@gmail.com>
  *
  * This file is part of the TYPO3 Crawler Extension.
  *
@@ -19,6 +20,8 @@ namespace AOE\Crawler\Converter;
  * The TYPO3 project - inspiring people to share!
  */
 
+use Exception;
+
 /**
  * @internal since v9.2.5
  */
@@ -29,29 +32,32 @@ class JsonCompatibilityConverter
      * in the database. To ensure that older crawler entries, which have already been stored as serialized data
      * still works, we have added this converter that can be used for the reading part. The writing part will be done
      * in json from now on.
-     * @see https://github.com/AOEpeople/crawler/issues/417
+     * @see https://github.com/tomasnorre/crawler/issues/417
      *
-     * @return array|bool
-     * @throws \Exception
+     * @throws Exception
      */
     public function convert(string $dataString)
     {
+        $decoded = '';
         try {
-            $unserialized = unserialize($dataString, ['allowed_classes' => false]);
-        } catch (\Throwable $e) {
-            $unserialized = false;
-        }
-        if (is_object($unserialized)) {
-            throw new \Exception('Objects are not allowed: ' . var_export($unserialized, true), 1593758307);
+            $decoded = json_decode($dataString, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            //no json, fallback to unserialize()
+            try {
+                $decoded = unserialize($dataString, [
+                    'allowed_classes' => false,
+                ]);
+            } catch (\Throwable) {
+                return false;
+            }
         }
 
-        if ($unserialized && ! is_object($unserialized)) {
-            return $unserialized;
-        }
-
-        $decoded = json_decode($dataString, true);
-        if ($decoded) {
+        if (is_array($decoded)) {
             return $decoded;
+        }
+
+        if (is_object($decoded)) {
+            throw new \RuntimeException('Objects are not allowed: ' . var_export($decoded, true), 1_593_758_307);
         }
 
         return false;
